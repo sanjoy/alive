@@ -405,19 +405,20 @@ class BinOp(Instr):
   def _poisonPropagation(self, a, b, p1, p2, fn, qvars):
     generic = lambda : fn(freeze(a, p1, qvars), freeze(b, p2, qvars))[0] ^\
                        fn(freeze(a, p1, qvars), freeze(b, p2, qvars))[0]
+    size = a.size()
     return {
-      self.Add:  generic,
-      self.Sub:  generic,
-      self.Mul:  generic,
-      self.UDiv: generic,
-      self.SDiv: generic,
-      self.URem: generic,
-      self.SRem: generic,
-      self.Shl:  lambda : p1 << freeze(b, p2, qvars),
-      self.AShr: lambda : p1 >> freeze(b, p2, qvars),
-      self.LShr: lambda : LShR(p1, freeze(b, p2, qvars)),
-      self.And:  lambda : (a & p2) | (b & p1) | (p1 & p2),
-      self.Or:   lambda : (~a & p2) | (~b & p1) | (p1 & p2),
+      self.Add:  lambda : SmearLeft(p1 | p2),
+      self.Sub:  lambda : SmearLeft(p1 | p2),
+      self.Mul:  lambda : SmearLeft(p1 | p2),
+      self.UDiv: lambda : SmearRight(p1 | p2),
+      self.SDiv: lambda : If(p1 == 0 & p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.URem: lambda : SmearRight(p1) | If(p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.SRem: lambda : If(p1 == 0 & p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.Shl:  lambda : SmearLeft(p1) | If(p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.AShr: lambda : SmearRight(p1) | If(p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.LShr: lambda : SmearRight(p1) | If(p2 == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.And:  lambda : p1 | p2,
+      self.Or:   lambda : p1 | p2,
       self.Xor:  lambda : p1 | p2,
       }[self.op]()
 
@@ -764,7 +765,7 @@ class Icmp(Instr):
     fn = lambda a,b : self.recurseSMT(ops, a, b, 0)
     r1 = fn(freeze(v1, p1, qvars), freeze(v2, p2, qvars))
     r2 = fn(freeze(v1, p1, qvars), freeze(v2, p2, qvars))
-    return toBV(fn(v1, v2)), toBV(Or(p1 == -1, p2 == -1, r1 != r2))
+    return toBV(fn(v1, v2)), toBV(Or(p1 != 0, p2 != 0))
 
   def getTypeConstraints(self):
     return And(self.stype == self.v1.type,
@@ -976,14 +977,14 @@ class GEP(Instr):
     type = self.type
     for i in range(len(self.idxs)):
       idx, u = state.eval(self.idxs[i], defined, qvars)
-      undef = undef | u
+      undef = undef | truncateOrSExt(u, ptr)
       idx = truncateOrSExt(idx, ptr)
       ptr += getAllocSize(type.getPointeeType())/8 * idx
       if i + 1 != len(self.idxs):
         type = type.getUnderlyingType()
 
     # TODO: handle inbounds
-    return ptr, undef
+    return ptr, SmearLeft(undef)
 
   def getTypeConstraints(self):
     return And(self.type.ensureTypeDepth(len(self.idxs)),

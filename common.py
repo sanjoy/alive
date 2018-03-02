@@ -352,3 +352,19 @@ def save_parse_str(s, line):
 def save_loc(loc):
   global gbl_parse_loc
   gbl_parse_loc = loc
+
+def SmearLeft(v):
+  size = v.size()
+  def rec(i):
+    if i == size:
+      return 0
+    return (v << i) | rec(i + 1)
+  return rec(0)
+
+def SmearRight(v):
+  size = v.size()
+  def rec(i):
+    if i == size:
+      return 0
+    return (v >> i) | rec(i + 1)
+  return rec(0)
