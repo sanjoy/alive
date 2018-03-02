@@ -972,20 +972,18 @@ class GEP(Instr):
     return 'getelementptr'
 
   def toSMT(self, defined, state, qvars):
-    undef = []
-    ptr, u = state.eval(self.ptr, defined, qvars)
-    undef.append(u)
+    ptr, undef = state.eval(self.ptr, defined, qvars)
     type = self.type
     for i in range(len(self.idxs)):
       idx, u = state.eval(self.idxs[i], defined, qvars)
-      undef.append(u)
+      undef = undef | u
       idx = truncateOrSExt(idx, ptr)
       ptr += getAllocSize(type.getPointeeType())/8 * idx
       if i + 1 != len(self.idxs):
         type = type.getUnderlyingType()
 
     # TODO: handle inbounds
-    return ptr, mk_and(undef)
+    return ptr, undef
 
   def getTypeConstraints(self):
     return And(self.type.ensureTypeDepth(len(self.idxs)),
