@@ -390,10 +390,10 @@ class BinOp(Instr):
       self.Add:  lambda: [],
       self.Sub:  lambda: [],
       self.Mul:  lambda: [],
-      self.UDiv: lambda: [b & ~p2 != 0],
-      self.SDiv: lambda: [b & ~p2 != 0, Or(a_not_intmin() + [(b | p2) != -1])],
-      self.URem: lambda: [b & ~p2 != 0],
-      self.SRem: lambda: [b & ~p2 != 0, Or(a_not_intmin() + [(b | p2) != -1])],
+      self.UDiv: lambda: [And([b != 0, p2 == 0])],
+      self.SDiv: lambda: [b != 0, And(Or(a_not_intmin() + [b != -1]), p2 == 0)],
+      self.URem: lambda: [And(b != 0, p2 == 0)],
+      self.SRem: lambda: [b != 0, And(Or(a_not_intmin() + [b != -1]), p2 == 0)],
       self.Shl:  lambda: [],
       self.AShr: lambda: [],
       self.LShr: lambda: [],
@@ -598,7 +598,19 @@ class ConversionOp(Instr):
       self.Int2Ptr:     lambda v: truncateOrZExt(v, self.type.getSize()),
       self.Bitcast:     lambda v: v,
     }[self.op]
-    return fn(v), fn(p)
+
+    size = self.type.getSize()
+
+    pfn = {
+      self.Trunc:       lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.ZExt:        lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.SExt:        lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.ZExtOrTrunc: lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.Ptr2Int:     lambda v: truncateOrZExt(v, self.type.getSize()),
+      self.Int2Ptr:     lambda v: truncateOrZExt(v, self.type.getSize()),
+      self.Bitcast:     lambda v: v,
+    }[self.op]
+    return fn(v), pfn(p)
 
   def getTypeConstraints(self):
     cnstr = {

@@ -1,0 +1,53 @@
+Name: Select:846
+%A = select %B, true, %C
+  =>
+%A = or %B, %C
+
+
+Name: Select:850
+%A = select %B, false, %C
+  =>
+%notb = xor %B, true
+%A = and %notb, %C
+
+
+Name: Select:855
+%A = select %B, %C, false
+  =>
+%A = and %B, %C
+
+
+Name: Select:859
+%A = select %B, %C, true
+  =>
+%notb = xor %B, true
+%A = or %notb, %C
+
+
+Name: Select:851
+%r = select %a, %b, %a
+  =>
+%r = and %a, %b
+
+Name: Select:852
+%r = select %a, %a, %b
+  =>
+%r = or %a, %b
+
+Name: Select:858
+%nota = xor %a, -1
+%r = select %a, %nota, %b
+  =>
+%r = and %nota, %b
+
+Name: Select:859
+%nota = xor %a, -1
+%r = select %a, %b, %nota
+  =>
+%r = or %nota, %b
+
+Name: Select:869
+%r = select C, 1, 0
+  =>
+%r = zext C
+

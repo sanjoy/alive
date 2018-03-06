@@ -28,7 +28,7 @@ def main():
   args = parser.parse_args(sys.argv[1:])
 
   preparsed_opts = sum([preparse_opt_file(f.read()) for f in args.file], [])
-  tempdir = tempfile.mkdtemp()
+  tempdir = '/usr/local/google/home/sanjoy/scratch/alive-tests' #tempfile.mkdtemp()
   print 'Using temporary directory {0}'.format(tempdir)
 
   makefile_file_name = os.path.join(tempdir, 'Makefile')
@@ -43,7 +43,7 @@ def main():
       f.write(preparsed_opts[i])
     with open(makefile_file_name, 'a') as f:
       f.write('test_{0}:\n'.format(i))
-      f.write('\tcd $(ALIVE_HOME) && ($(PYTHON) alive.py --hide-progress {0} || echo "FAILED") &> {1}\n'\
+      f.write('\tcd $(ALIVE_HOME) && (timeout 10m $(PYTHON) alive.py --hide-progress {0} || echo "FAILED") &> {1}\n'\
               .format(input_file_name, output_file_name))
 
   all_results_file_name = os.path.join(tempdir, 'all_results')
@@ -55,14 +55,14 @@ def main():
       f.write('\tcat {0} >> {1}\n'.format(output_file_name, all_results_file_name))
   old_dir = os.getcwd()
   os.chdir(tempdir)
-  print 'Invoking make to run {0} copies of alive in parallel ...'.format(PARALLEL_JOBS)
-  with open(os.devnull, 'w') as devnull:
-    subprocess.call(['make', '-j' + str(PARALLEL_JOBS), 'all'],
-                    stdout=devnull, stderr=subprocess.STDOUT)
-  with open(all_results_file_name, 'r') as all_results:
-    print ''.join(all_results.readlines())
+  # print 'Invoking make to run {0} copies of alive in parallel ...'.format(PARALLEL_JOBS)
+  # with open(os.devnull, 'w') as devnull:
+  #   subprocess.call(['make', '-j' + str(PARALLEL_JOBS), 'all'],
+  #                   stdout=devnull, stderr=subprocess.STDOUT)
+  # with open(all_results_file_name, 'r') as all_results:
+  #   print ''.join(all_results.readlines())
   os.chdir(old_dir)
-  shutil.rmtree(tempdir)
+  # shutil.rmtree(tempdir)
 
 if __name__ == '__main__':
   main()
