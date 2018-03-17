@@ -406,7 +406,7 @@ class BinOp(Instr):
     generic = lambda : fn(freeze(a, p1, qvars), freeze(b, p2, qvars))[0] ^\
                        fn(freeze(a, p1, qvars), freeze(b, p2, qvars))[0]
     size = a.size()
-    return {
+    propagated_poison = {
       self.Add:  lambda : SmearLeft(p1 | p2),
       self.Sub:  lambda : SmearLeft(p1 | p2),
       self.Mul:  lambda : SmearLeft(p1 | p2),
@@ -422,11 +422,45 @@ class BinOp(Instr):
       self.Xor:  lambda : p1 | p2,
       }[self.op]()
 
+    no_new_poison = lambda: BitVecVal(0, size)
+    high_bit_poison = lambda: BitVecVal(1, size) << (size - 1)
+    low_bit_poison = lambda: BitVecVal(1, size)
+    new_poison = {
+      self.Add: {'nsw': lambda a,b: If(SignExt(1,a)+SignExt(1,b) == SignExt(1,a+b), no_new_poison(), high_bit_poison()),
+                 'nuw': lambda a,b: If(ZeroExt(1,a)+ZeroExt(1,b) == ZeroExt(1,a+b), no_new_poison(), high_bit_poison()),
+                },
+      self.Sub: {'nsw': lambda a,b: If(SignExt(1,a)-SignExt(1,b) == SignExt(1,a-b), no_new_poison(), high_bit_poison()),
+                 'nuw': lambda a,b: If(ZeroExt(1,a)-ZeroExt(1,b) == ZeroExt(1,a-b), no_new_poison(), high_bit_poison()),
+                },
+      self.Mul: {'nsw': lambda a,b: If(no_overflow_smul(a, b), no_new_poison(), high_bit_poison()),
+                 'nuw': lambda a,b: If(no_overflow_umul(a, b), no_new_poison(), high_bit_poison()),
+                },
+      self.UDiv:{'exact': lambda a,b: If(UDiv(a, b) * b == a, no_new_poison(), low_bit_poison()),
+                },
+      self.SDiv:{'exact': lambda a,b: If((a / b) * b == a, no_new_poison(), low_bit_poison()),
+                },
+      self.URem:{},
+      self.SRem:{},
+      self.Shl: {'nsw': lambda a,b: If((a << b) >> b == a, no_new_poison(), high_bit_poison()),
+                 'nuw': lambda a,b: If(LShR(a << b, b) == a, no_new_poison(), high_bit_poison()),
+                },
+      self.AShr:{'exact': lambda a,b: If((a >> b) << b == a, no_new_poison(), low_bit_poison()),
+                },
+      self.LShr:{'exact': lambda a,b: If(LShR(a, b) << b == a, no_new_poison(), low_bit_poison()),
+                },
+      self.And: {},
+      self.Or:  {},
+      self.Xor: {},
+    }[self.op]
+    for f in self.flags:
+      propagated_poison = propagated_poison | new_poison[f](freeze(a, p1, qvars), freeze(b, p2, qvars))
+    return propagated_poison
+
   def toSMT(self, defined, state, qvars):
     bits = self.type.getSize()
     v1, p1 = state.eval(self.v1, defined, qvars)
     v2, p2 = state.eval(self.v2, defined, qvars)
-    nonpoison = self._genPoisonConds(v1, v2, p1, p2, qvars)
+#    nonpoison = self._genPoisonConds(v1, v2, p1, p2, qvars)
     defined += self._genSMTDefConds(v1, v2, p1, p2, bits)
     fn = {
       self.Add:  lambda a,b: (a + b, []),
@@ -444,7 +478,7 @@ class BinOp(Instr):
       self.Xor:  lambda a,b: (a ^ b, []),
     }[self.op]
     val, extranonpoison = fn(v1, v2)
-    return val, mk_if(mk_and(nonpoison + extranonpoison),
+    return val, mk_if(mk_and(extranonpoison),
                       self._poisonPropagation(v1, v2, p1, p2, fn, qvars),
                       BitVecVal(-1, bits))
 
@@ -602,10 +636,10 @@ class ConversionOp(Instr):
     size = self.type.getSize()
 
     pfn = {
-      self.Trunc:       lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
-      self.ZExt:        lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
-      self.SExt:        lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
-      self.ZExtOrTrunc: lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),
+      self.Trunc:       lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)), ## TODO
+      self.ZExt:        lambda v: SignExt(size - self.stype.getSize(), v),
+      self.SExt:        lambda v: SignExt(size - self.stype.getSize(), v),
+      self.ZExtOrTrunc: lambda v: If(v == 0, BitVecVal(0, size), BitVecVal(-1, size)),  ## TODO
       self.Ptr2Int:     lambda v: truncateOrZExt(v, self.type.getSize()),
       self.Int2Ptr:     lambda v: truncateOrZExt(v, self.type.getSize()),
       self.Bitcast:     lambda v: v,
